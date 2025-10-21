@@ -1,0 +1,20 @@
+# Web framework
+streamlit==1.29.0
+
+# Data handling
+pandas==2.1.0
+numpy==1.26.0
+
+# Machine learning
+scikit-learn==1.3.2
+joblib==1.3.2
+
+# LLM / GPT4All
+gpt4all==1.1.2
+
+# Optional OCR if you want to process PDFs/images
+pytesseract==0.3.10
+pdfplumber==0.9.0
+Pillow==10.0.0
+
+# Logging and warnings (optional, usually part of stdlib)
