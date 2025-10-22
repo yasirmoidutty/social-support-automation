@@ -1,72 +1,121 @@
 # utils/llm_utils.py
-import subprocess
-import re
 import json
+import re
+from typing import Dict, Any
+import ollama
 
-MODEL_NAME = "qwen2.5:7b-instruct"
+MODEL_NAME = "qwen2.5:7b-instruct"  # make sure you pulled this locally
 
-def query_ollama(prompt: str) -> str:
+# -------------------------------
+# 1️⃣ Parse Applicant Information with LLM
+# -------------------------------
+def parse_applicant_info(extracted_text: str) -> Dict[str, Any]:
     """
-    Query Ollama CLI using subprocess.
+    Uses local Ollama LLM to extract structured applicant information
+    from OCR text. Falls back to regex if LLM fails.
     """
+    if not extracted_text or len(extracted_text.strip()) == 0:
+        raise ValueError("No text provided for parsing.")
+
+    # Limit input length to 2000 chars to avoid model truncation
+    short_text = extracted_text[:2000]
+
+    prompt = f"""
+You are an expert document parser. Extract structured applicant information
+from the following social support application text.
+
+OCR Text:
+\"\"\"{short_text}\"\"\"
+
+Return a valid JSON with these fields:
+{{
+    "name": "",
+    "age": "",
+    "gender": "",
+    "marital_status": "",
+    "employment_status": "",
+    "monthly_income": "",
+    "family_members": "",
+    "address": "",
+    "disability_status": "",
+    "other_support_received": ""
+}}
+
+Only return JSON. Do not add any explanations.
+"""
+
     try:
-        # Note: Ollama now reads input from stdin
-        process = subprocess.Popen(
-            ["ollama", "run", MODEL_NAME],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+        response = ollama.chat(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that extracts form data."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
         )
-        stdout, stderr = process.communicate(input=prompt)
-        if stderr:
-            return f"Error: {stderr.strip()}"
-        return stdout.strip()
+
+        # Debug: see what LLM actually returned
+        print("[DEBUG] LLM raw response:", response)
+
+        text_output = response.get("message", {}).get("content", "").strip()
+
+        # Try parsing JSON from LLM output
+        match = re.search(r"\{.*\}", text_output, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            return parsed
+        else:
+            raise ValueError("LLM did not return valid JSON")
+
     except Exception as e:
-        return f"Error querying Ollama: {str(e)}"
+        print(f"[WARN] LLM parsing failed: {e}")
+        # Fallback to regex parser
+        return fallback_parse(extracted_text)
 
-def extract_applicant_info(text: str) -> dict:
+# -------------------------------
+# 2️⃣ Fallback Parser (regex)
+# -------------------------------
+def fallback_parse(text: str) -> Dict[str, Any]:
     """
-    Extract numeric fields from the text.
+    Basic regex fallback parser when LLM fails.
+    Improved to handle long names and realistic fields.
     """
-    def clean_number(n):
-        try:
-            return int(n.replace(',', '').strip())
-        except:
-            return 0
+    def extract(pattern):
+        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        return match.group(1).strip() if match else ""
 
-    info = {
-        "age": 30,
-        "employment_years": 5,
-        "income": 4000,
-        "family_size": 4,
-        "assets": 8000
+    return {
+        "name": extract(r"Full Name[:\-]?\s*(.+)"),
+        "age": extract(r"Age[:\-]?\s*(\d+)"),
+        "gender": extract(r"Gender[:\-]?\s*(Male|Female|Other)"),
+        "marital_status": extract(r"Marital Status[:\-]?\s*(.+)"),
+        "employment_status": extract(r"Employment Status[:\-]?\s*(.+)"),
+        "monthly_income": extract(r"Monthly Income.*[:\-]?\s*([\d,]+)"),
+        "family_members": extract(r"Family Size.*[:\-]?\s*(\d+)"),
+        "address": extract(r"Address[:\-]?\s*(.+)"),
+        "disability_status": extract(r"Disability[:\-]?\s*(.+)"),
+        "other_support_received": extract(r"Support[:\-]?\s*(.+)"),
     }
 
-    numbers = [clean_number(n) for n in re.findall(r'\d{1,3}(?:,\d{3})*|\d+', text)]
-
-    if len(numbers) >= 5:
-        info['age'] = numbers[0]
-        info['employment_years'] = numbers[1]
-        info['income'] = numbers[2]
-        info['family_size'] = numbers[3]
-        info['assets'] = numbers[4]
-
-    return info
-
-def explain_eligibility(applicant: dict) -> str:
+# -------------------------------
+# 3️⃣ Eligibility Check (optional)
+# -------------------------------
+def check_eligibility(applicant_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Ask the model to explain eligibility.
+    Simple rule-based eligibility check.
     """
-    prompt = f"""
-The applicant has the following details:
-- Age: {applicant['age']}
-- Employment Years: {applicant['employment_years']}
-- Monthly Income: {applicant['income']}
-- Family Size: {applicant['family_size']}
-- Total Assets: {applicant['assets']}
-- Eligibility: {"ELIGIBLE" if applicant.get('eligible', True) else "NOT eligible"}
+    try:
+        income = int(str(applicant_data.get("monthly_income", "0")).replace(",", ""))
+        family_members = int(applicant_data.get("family_members", 1))
+    except Exception:
+        income, family_members = 0, 1
 
-Explain briefly why this applicant is or is not eligible for social support.
-"""
-    return query_ollama(prompt)
+    eligible = income < 25000 and family_members >= 3
+    reason = (
+        "✅ Eligible for support"
+        if eligible
+        else "❌ Not eligible — income exceeds limit or family size too small."
+    )
+
+    return {"eligible": eligible, "reason": reason}
+
