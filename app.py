@@ -25,8 +25,16 @@ if uploaded_files:
 
         if response.status_code == 200:
             result = response.json()
-            st.success("Response from backend:")
-            st.json(result)
+
+            final_status = result.get("final_status", "")
+            reason = result.get("reason", "")
+            r = "✅ Eligible" if final_status == "eligibile" else "❌ Not Eligible"
+
+            st.subheader("Final Decision")
+            st.markdown(f"### {result}")
+            st.subheader("Reason")
+            st.markdown(f"##### {reason}")
+            
         else:
             st.error(f"Error: {response.status_code}")
 
