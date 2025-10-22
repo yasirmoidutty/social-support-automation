@@ -1,59 +1,40 @@
-import os
-import warnings
-import logging
-from gpt4all import GPT4All
+# utils/llm_utils.py
+import subprocess
 import re
+import json
 
-# ----------------------------
-# Suppress warnings
-# ----------------------------
-warnings.filterwarnings("ignore")
-logging.getLogger("gpt4all").setLevel(logging.ERROR)
-os.environ["GPT4ALL_LOG_LEVEL"] = "ERROR"
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # CPU only
+MODEL_NAME = "qwen2.5:7b-instruct"
 
-# ----------------------------
-# Absolute path to local LLM model
-# ----------------------------
-model_path = os.path.abspath("models/q4_0-orca-mini-3b.gguf")
-
-# ----------------------------
-# Load local GPT4All model (offline)
-# ----------------------------
-try:
-    model = GPT4All(model_path, allow_download=False, device="cpu")
-    print("✅ LLM model loaded locally")
-except Exception as e:
-    print(f"❌ Failed to load local LLM model: {e}")
-    raise e
-
-# ----------------------------
-# Function to generate LLM explanation
-# ----------------------------
-def explain_eligibility(applicant):
-    prompt = f"""
-    The applicant has the following details:
-    - Age: {applicant['age']}
-    - Employment Years: {applicant['employment_years']}
-    - Monthly Income: {applicant['income']}
-    - Family Size: {applicant['family_size']}
-    - Total Assets: {applicant['assets']}
-    - Eligibility: {"ELIGIBLE" if applicant['eligible'] else "NOT eligible"}
-
-    Please explain briefly why this applicant is or is not eligible for social support.
+def query_ollama(prompt: str) -> str:
     """
-    response = model.generate(prompt, max_tokens=120)
-    return response.strip()
+    Query Ollama CLI using subprocess.
+    """
+    try:
+        # Note: Ollama now reads input from stdin
+        process = subprocess.Popen(
+            ["ollama", "run", MODEL_NAME],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate(input=prompt)
+        if stderr:
+            return f"Error: {stderr.strip()}"
+        return stdout.strip()
+    except Exception as e:
+        return f"Error querying Ollama: {str(e)}"
 
-# ----------------------------
-# Function to extract structured applicant info from uploaded documents
-# ----------------------------
-def extract_applicant_info(text):
+def extract_applicant_info(text: str) -> dict:
     """
-    For demo purposes: extract numeric fields from text using regex.
-    Can be replaced with LLM extraction for real-world scenarios.
+    Extract numeric fields from the text.
     """
-    # Default values
+    def clean_number(n):
+        try:
+            return int(n.replace(',', '').strip())
+        except:
+            return 0
+
     info = {
         "age": 30,
         "employment_years": 5,
@@ -62,8 +43,8 @@ def extract_applicant_info(text):
         "assets": 8000
     }
 
-    # Extract numbers from text
-    numbers = list(map(int, re.findall(r'\d+', text)))
+    numbers = [clean_number(n) for n in re.findall(r'\d{1,3}(?:,\d{3})*|\d+', text)]
+
     if len(numbers) >= 5:
         info['age'] = numbers[0]
         info['employment_years'] = numbers[1]
@@ -72,3 +53,20 @@ def extract_applicant_info(text):
         info['assets'] = numbers[4]
 
     return info
+
+def explain_eligibility(applicant: dict) -> str:
+    """
+    Ask the model to explain eligibility.
+    """
+    prompt = f"""
+The applicant has the following details:
+- Age: {applicant['age']}
+- Employment Years: {applicant['employment_years']}
+- Monthly Income: {applicant['income']}
+- Family Size: {applicant['family_size']}
+- Total Assets: {applicant['assets']}
+- Eligibility: {"ELIGIBLE" if applicant.get('eligible', True) else "NOT eligible"}
+
+Explain briefly why this applicant is or is not eligible for social support.
+"""
+    return query_ollama(prompt)
