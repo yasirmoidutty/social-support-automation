@@ -1,14 +1,14 @@
 import json
 import re
 from typing import Dict, Any, Tuple
-import ollama  # ✅ Using local Ollama
+import ollama  
+from datetime import date
 
-MODEL_NAME = "qwen2.5:7b-instruct"  # make sure it's pulled: ollama pull qwen2.5:7b-instruct
+
+MODEL_NAME = "qwen2.5:7b-instruct"  
 
 
-# -------------------------------
-# 1️⃣ Parse Applicant Information
-# -------------------------------
+
 def parse_applicant_info(extracted_text: str, return_raw: bool = False) -> Any:
     """
     Uses the local Ollama LLM to extract structured applicant information
@@ -76,9 +76,7 @@ Only return JSON. Do not add any explanations.
         return parsed
 
 
-# -------------------------------
-# 2️⃣ Simple Fallback Parsing
-# -------------------------------
+
 def fallback_parse(text: str) -> Dict[str, Any]:
     """Regex fallback parsing when LLM fails."""
     def extract(pattern):
@@ -93,7 +91,7 @@ def fallback_parse(text: str) -> Dict[str, Any]:
         "employment_status": extract(r"Employment Status[:\-]?\s*([A-Za-z ]+)"),
         "employment_years": int(extract(r"Years of Employment[:\-]?\s*(\d+)") or 0),
         "monthly_income": int(extract(r"Monthly Income.*?[:\-]?\s*([\d,]+)") or 0),
-        "family_members": [],  # fallback empty list
+        "family_members": [], 
         "address": extract(r"Address[:\-]?\s*(.*)"),
         "disability_status": "",
         "other_support_received": "",
@@ -102,9 +100,6 @@ def fallback_parse(text: str) -> Dict[str, Any]:
     }
 
 
-# -------------------------------
-# 3️⃣ Eligibility Check (optional)
-# -------------------------------
 def check_eligibility(applicant_data: Dict[str, Any]) -> Dict[str, Any]:
     """Simple rule-based eligibility."""
     income = applicant_data.get("monthly_income", 0)
@@ -120,3 +115,111 @@ def check_eligibility(applicant_data: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return {"eligible": eligible, "reason": reason}
+
+
+def document_validater(state):
+    application_data = state.get("extracted_data", {})
+    uploaded_docs = state.get("applicant_info", {})
+
+    age = application_data["age"]
+    income = application_data["income"]
+
+    salary_slip_text = uploaded_docs["salary"]
+    passport_text = uploaded_docs["passport"]
+    today = date.today()
+
+    prompt = f"""
+        You are a Data Validator AI.
+
+        Validate the social support application.
+
+        ### Inputs:
+        Application data:
+        Age: {age}
+        Income: {income}
+
+        Uploaded documents:
+        Salary Slip: {salary_slip_text}
+        Passport: {passport_text}
+
+        Validation Rules:
+        1. Age: Calculate age from passport DOB and today's date {today}. Compare with application age.
+        2. Income: Compare application income with salary slip income.
+
+        Output strictly as JSON:
+        {{
+        "age_validation": "success" | "failed",
+        "income_validation": "success" | "failed",
+        "overall_status": "success" | "failed",
+        "reason": "<reason if failed>"
+        }}
+        """
+    
+    response = ollama.chat(
+        model="qwen2.5:7b-instruct",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    # Parse JSON output
+    try:
+        validation_result = json.loads(response["content"])
+    except Exception as e:
+        validation_result = {
+            "age_validation": "failed",
+            "income_validation": "failed",
+            "overall_status": "failed",
+            "reason": "Failed to parse model output"
+        }
+    return validation_result
+
+
+def response_generator_ollama(state):
+    """
+    Generate the final eligibility response for social support
+    based on eligibility check and data validation results.
+    """
+
+    eligibility = state.get("eligibility", False)
+    data_validation = state.get("validated_data", {})
+
+    # Convert inputs to JSON strings for clarity in prompt
+    eligibility_json = json.dumps(eligibility)
+    validation_json = json.dumps(data_validation)
+
+    prompt = f"""
+    You are a Response Generator AI for a social support application.
+
+    ### Inputs:
+    eligibility = {eligibility_json}
+    data_validation = {validation_json}
+
+    ### Rules:
+    - Applicant is eligible if:
+        1. eligibility is True AND
+        2. data_validation["overall_status"] is "success"
+    - If either fails, applicant is not eligible.
+    - Provide a clear reason explaining the decision.
+
+    ### Output strictly as JSON:
+    {{
+    "final_status": "eligible" | "not eligible",
+    "reason": "<short reason explaining eligibility or failure>"
+    }}
+    """
+
+    response = ollama.chat(
+        model="qwen2.5:7b-instruct",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    try:
+        final_response = json.loads(response["content"])
+    except Exception:
+        final_response = {
+            "final_status": "not eligible",
+            "reason": "Failed to parse model output"
+        }
+
+    return final_response
+
+
