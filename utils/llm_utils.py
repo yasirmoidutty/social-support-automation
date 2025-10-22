@@ -1,31 +1,29 @@
-# utils/llm_utils.py
 import json
 import re
-from typing import Dict, Any
-import ollama
+from typing import Dict, Any, Tuple
+import ollama  # ✅ Using local Ollama
 
-MODEL_NAME = "qwen2.5:7b-instruct"  # make sure you pulled this locally
+MODEL_NAME = "qwen2.5:7b-instruct"  # make sure it's pulled: ollama pull qwen2.5:7b-instruct
+
 
 # -------------------------------
-# 1️⃣ Parse Applicant Information with LLM
+# 1️⃣ Parse Applicant Information
 # -------------------------------
-def parse_applicant_info(extracted_text: str) -> Dict[str, Any]:
+def parse_applicant_info(extracted_text: str, return_raw: bool = False) -> Any:
     """
-    Uses local Ollama LLM to extract structured applicant information
-    from OCR text. Falls back to regex if LLM fails.
+    Uses the local Ollama LLM to extract structured applicant information
+    (name, age, income, etc.) from OCR text.
+    If return_raw=True, returns a tuple (parsed_dict, raw_text).
     """
     if not extracted_text or len(extracted_text.strip()) == 0:
         raise ValueError("No text provided for parsing.")
-
-    # Limit input length to 2000 chars to avoid model truncation
-    short_text = extracted_text[:2000]
 
     prompt = f"""
 You are an expert document parser. Extract structured applicant information
 from the following social support application text.
 
 OCR Text:
-\"\"\"{short_text}\"\"\"
+\"\"\"{extracted_text}\"\"\"
 
 Return a valid JSON with these fields:
 {{
@@ -34,11 +32,14 @@ Return a valid JSON with these fields:
     "gender": "",
     "marital_status": "",
     "employment_status": "",
+    "employment_years": "",
     "monthly_income": "",
     "family_members": "",
     "address": "",
     "disability_status": "",
-    "other_support_received": ""
+    "other_support_received": "",
+    "assets": "",
+    "liabilities": ""
 }}
 
 Only return JSON. Do not add any explanations.
@@ -54,68 +55,68 @@ Only return JSON. Do not add any explanations.
             stream=False,
         )
 
-        # Debug: see what LLM actually returned
-        print("[DEBUG] LLM raw response:", response)
+        text_output = response["message"]["content"].strip()
 
-        text_output = response.get("message", {}).get("content", "").strip()
-
-        # Try parsing JSON from LLM output
+        # Clean and parse JSON safely
         match = re.search(r"\{.*\}", text_output, re.DOTALL)
         if match:
             parsed = json.loads(match.group(0))
-            return parsed
         else:
             raise ValueError("LLM did not return valid JSON")
 
+        if return_raw:
+            return parsed, text_output
+        return parsed
+
     except Exception as e:
         print(f"[WARN] LLM parsing failed: {e}")
-        # Fallback to regex parser
-        return fallback_parse(extracted_text)
+        parsed = fallback_parse(extracted_text)
+        if return_raw:
+            return parsed, ""
+        return parsed
+
 
 # -------------------------------
-# 2️⃣ Fallback Parser (regex)
+# 2️⃣ Simple Fallback Parsing
 # -------------------------------
 def fallback_parse(text: str) -> Dict[str, Any]:
-    """
-    Basic regex fallback parser when LLM fails.
-    Improved to handle long names and realistic fields.
-    """
+    """Regex fallback parsing when LLM fails."""
     def extract(pattern):
-        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        match = re.search(pattern, text, re.IGNORECASE)
         return match.group(1).strip() if match else ""
 
     return {
-        "name": extract(r"Full Name[:\-]?\s*(.+)"),
-        "age": extract(r"Age[:\-]?\s*(\d+)"),
+        "name": extract(r"Name[:\-]?\s*([A-Za-z ]+)"),
+        "age": int(extract(r"Age[:\-]?\s*(\d+)") or 0),
         "gender": extract(r"Gender[:\-]?\s*(Male|Female|Other)"),
-        "marital_status": extract(r"Marital Status[:\-]?\s*(.+)"),
-        "employment_status": extract(r"Employment Status[:\-]?\s*(.+)"),
-        "monthly_income": extract(r"Monthly Income.*[:\-]?\s*([\d,]+)"),
-        "family_members": extract(r"Family Size.*[:\-]?\s*(\d+)"),
-        "address": extract(r"Address[:\-]?\s*(.+)"),
-        "disability_status": extract(r"Disability[:\-]?\s*(.+)"),
-        "other_support_received": extract(r"Support[:\-]?\s*(.+)"),
+        "marital_status": extract(r"Marital Status[:\-]?\s*([A-Za-z ]+)"),
+        "employment_status": extract(r"Employment Status[:\-]?\s*([A-Za-z ]+)"),
+        "employment_years": int(extract(r"Years of Employment[:\-]?\s*(\d+)") or 0),
+        "monthly_income": int(extract(r"Monthly Income.*?[:\-]?\s*([\d,]+)") or 0),
+        "family_members": [],  # fallback empty list
+        "address": extract(r"Address[:\-]?\s*(.*)"),
+        "disability_status": "",
+        "other_support_received": "",
+        "assets": int(extract(r"Total Assets.*?[:\-]?\s*([\d,]+)") or 0),
+        "liabilities": int(extract(r"Total Liabilities.*?[:\-]?\s*([\d,]+)") or 0)
     }
+
 
 # -------------------------------
 # 3️⃣ Eligibility Check (optional)
 # -------------------------------
 def check_eligibility(applicant_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Simple rule-based eligibility check.
-    """
-    try:
-        income = int(str(applicant_data.get("monthly_income", "0")).replace(",", ""))
-        family_members = int(applicant_data.get("family_members", 1))
-    except Exception:
-        income, family_members = 0, 1
+    """Simple rule-based eligibility."""
+    income = applicant_data.get("monthly_income", 0)
+    family_members = len(applicant_data.get("family_members", [])) or 1
+    assets = applicant_data.get("assets", 0)
+    liabilities = applicant_data.get("liabilities", 0)
 
-    eligible = income < 25000 and family_members >= 3
+    eligible = income < 25000 and family_members >= 3 and (assets - liabilities) <= 50000
     reason = (
         "✅ Eligible for support"
         if eligible
-        else "❌ Not eligible — income exceeds limit or family size too small."
+        else "❌ Not eligible — check income/family/assets."
     )
 
     return {"eligible": eligible, "reason": reason}
-

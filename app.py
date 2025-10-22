@@ -1,20 +1,16 @@
 import streamlit as st
 import os
 import joblib
-from utils import ocr_utils, llm_utils, eligibility
 import pandas as pd
+from utils import ocr_utils, llm_utils
 
 st.set_page_config(page_title="🛠 Social Support Application Automation", layout="wide")
-
 st.title("🛠 Social Support Application Automation")
 st.write("Upload applicant documents (PDF/Image) and check eligibility for social support.")
 
-uploaded_file = st.file_uploader(
-    "Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"]
-)
+uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded_file:
-    # Save temporarily
     os.makedirs("data", exist_ok=True)
     file_path = os.path.join("data", uploaded_file.name)
     with open(file_path, "wb") as f:
@@ -29,62 +25,44 @@ if uploaded_file:
 
         st.info("🧠 Parsing Applicant Information with LLM...")
         try:
-            applicant_info = llm_utils.parse_applicant_info(extracted_text)
+            applicant_info, raw_llm = llm_utils.parse_applicant_info(extracted_text, return_raw=True)
+
             st.success("✅ Applicant Information Parsed Successfully")
 
-            # Display raw JSON
-            st.subheader("Raw Parsed Output")
-            st.json(applicant_info)
+            # Show raw LLM output
+            st.subheader("Raw LLM Output")
+            st.text_area("LLM Raw Response", raw_llm, height=300)
 
-            # Fields filled by fallback parser
-            fallback_fields = []
-            for key, value in applicant_info.items():
-                if value in ("", [], None):
-                    fallback_fields.append(key)
-            st.write("Fields filled by fallback parser:", fallback_fields)
-
-            # Structured info
+            # Show structured dictionary
             st.subheader("Structured Applicant Info")
             st.json(applicant_info)
 
             # --- Eligibility evaluation ---
             st.info("🏛 Evaluating Eligibility...")
-
             try:
-                # Load trained ML model
                 model_path = os.path.join("models", "eligibility_model.joblib")
                 model = joblib.load(model_path)
 
-                # Prepare DataFrame for ML prediction
                 df = pd.DataFrame([{
-                    "age": int(applicant_info.get("age", 0)),
-                    "income": float(str(applicant_info.get("monthly_income", 0)).replace(",", "")),
+                    "age": applicant_info.get("age", 0),
+                    "income": applicant_info.get("monthly_income", 0),
                     "family_size": len(applicant_info.get("family_members", [])),
-                    "liabilities": float(applicant_info.get("liabilities", 0)),
-                    "assets": float(applicant_info.get("assets", 0))
+                    "liabilities": applicant_info.get("liabilities", 0),
+                    "assets": applicant_info.get("assets", 0),
+                    "employment_years": applicant_info.get("employment_years", 0)
                 }])
 
-                # Predict eligibility using ML model
                 prediction = model.predict(df)[0]
                 result = "✅ Eligible" if prediction == 1 else "❌ Not Eligible"
-                st.subheader("Final Decision (ML Model)")
+                st.subheader("Final Decision")
                 st.markdown(f"### {result}")
 
-            except Exception as ml_error:
-                st.warning(f"ML model evaluation failed: {ml_error}")
+            except Exception as e:
+                st.warning(f"ML model evaluation failed: {e}")
                 st.info("Using fallback rule-based eligibility check...")
-
-                # Fallback rule-based eligibility
-                fallback_result = eligibility.check_eligibility({
-                    "monthly_income": float(str(applicant_info.get("monthly_income", 0)).replace(",", "")),
-                    "other_income": float(str(applicant_info.get("other_support_received", 0)).replace(",", "")) or 0,
-                    "family_size": len(applicant_info.get("family_members", [])),
-                    "assets": float(applicant_info.get("assets", 0)),
-                    "liabilities": float(applicant_info.get("liabilities", 0))
-                })
-                result_text = "✅ Eligible" if fallback_result else "❌ Not Eligible"
-                st.subheader("Final Decision (Fallback Rule)")
-                st.markdown(f"### {result_text}")
+                fallback_result = llm_utils.check_eligibility(applicant_info)
+                st.subheader("Final Decision (Fallback)")
+                st.markdown(f"### {fallback_result['reason']}")
 
         except Exception as e:
             st.error(f"Error during LLM parsing or evaluation: {e}")
