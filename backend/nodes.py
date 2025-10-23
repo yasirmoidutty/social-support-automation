@@ -9,7 +9,7 @@ import pandas as pd
 model_path = os.path.join("../models", "eligibility_model.joblib")
 eligibility_model = joblib.load(model_path)
 
-def data_extractor(state: AppState) -> AppState:
+def data_extractor(state: AppState) -> dict:
     application = state.get("applicant_info", {}).get("application_form", "")
     print("Application Data\n\n--------------", application)
     if application and application.strip():
@@ -19,9 +19,11 @@ def data_extractor(state: AppState) -> AppState:
         except:
             print("data extraction failed")
             extracted_data = {}
+
+    print(extracted_data)
     return {"extracted_data": extracted_data}
 
-def data_validator(state: AppState) -> AppState:
+def data_validator(state: AppState) -> dict:
     print("Validating data...")
     validation_results = document_validater(state)
     return {"validation_results": validation_results}
@@ -43,7 +45,7 @@ def eligibility_checker(state: AppState) -> AppState:
     eligibilty = True if prediction == 0 else False
     return {"eligibility": eligibilty}
 
-def response_generator(state: AppState) -> AppState:
+def response_generator(state: AppState) -> dict:
     final_response = response_generator_ollama(state)
     return {"final_response": final_response}
 
