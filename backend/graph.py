@@ -8,17 +8,25 @@ import io
 # build graph
 graph = StateGraph(AppState)
 
-graph.add_node("data_extractor", data_extractor)
-graph.add_node("data_validator", data_validator)
-graph.add_node("eligibility_checker", eligibility_checker)
-graph.add_node("response_generator", response_generator)
-graph.add_node("orchestrator", orchestrator)
+graph.add_node("data_extractor", DataExtractor())
+graph.add_node("data_validator", DataValidator())
+graph.add_node("eligibility_checker", EligibilityChecker())
+graph.add_node("response_generator", ResponseGenerator())
+graph.add_node("orchestrator", Orchestrator())
 
+# Conditional edges
 graph.add_conditional_edges(
-    "orchestrator",
-    lambda state: state.get("next")  
-)
+    "orchestrator", 
+    lambda state: state.get("next"),
+    {
+        "data_extractor": "data_extractor",
+        "data_validator": "data_validator",
+        "eligibility_checker": "eligibility_checker",
+        "response_generator": "response_generator"
+    } 
+    )
 
+# Return edges
 graph.add_edge("data_extractor", "orchestrator")
 graph.add_edge("data_validator", "orchestrator")
 graph.add_edge("eligibility_checker", "orchestrator")
