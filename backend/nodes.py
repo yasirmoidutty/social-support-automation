@@ -22,7 +22,7 @@ def data_extractor(state: AppState) -> AppState:
     return {"extracted_data": extracted_data}
 
 def data_validator(state: AppState) -> AppState:
-    print("✅ Validating data...")
+    print("Validating data...")
     validation_results = document_validater(state)
     return {"validation_results": validation_results}
 
