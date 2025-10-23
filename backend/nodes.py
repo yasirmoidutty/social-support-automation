@@ -12,13 +12,14 @@ eligibility_model = joblib.load(model_path)
 def data_extractor(state: AppState) -> dict:
     application = state.get("applicant_info", {}).get("application_form", "")
     print("Application Data\n\n--------------", application)
+
+    extracted_data = {}
     if application and application.strip():
         try:
             print("Extracting relevant info")
             extracted_data = parse_applicant_info(extracted_text=application)
         except:
             print("data extraction failed")
-            extracted_data = {}
 
     print(extracted_data)
     return {"extracted_data": extracted_data}
