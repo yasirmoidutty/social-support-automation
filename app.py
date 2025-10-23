@@ -28,13 +28,13 @@ if uploaded_files:
 
             final_status = result.get("final_status", "")
             reason = result.get("reason", "")
-            r = "✅ Eligible" if final_status == "eligibile" else "❌ Not Eligible"
+            status = "✅ Eligible" if final_status == "eligibile" else "❌ Not Eligible"
 
             st.subheader("Final Decision")
-            st.markdown(f"### {result}")
+            st.markdown(f"### {status}")
             st.subheader("Reason")
             st.markdown(f"##### {reason}")
-            
+
         else:
             st.error(f"Error: {response.status_code}")
 

@@ -42,8 +42,8 @@ def eligibility_checker(state: AppState) -> AppState:
     print(df)
 
     prediction = eligibility_model.predict(df)[0]
-    eligibilty = True if prediction == 0 else False
-    return {"eligibility": eligibilty}
+    eligibility = True if prediction == 0 else False
+    return {"eligibility": eligibility}
 
 def response_generator(state: AppState) -> dict:
     final_response = response_generator_ollama(state)
@@ -62,7 +62,7 @@ def orchestrator(state: AppState) -> str:
         1. Start with 'data_extractor' when new application_info is received.
         2. After extraction, go to 'eligibility_checker'.
         3. If eligible=True, go to 'data_validator'. then go to `response_generator`
-        4. If eligible=False, go to 'response_generator'.
+        4. If eligible=False, or `validation_results` available go to 'response_generator'.
         5. Follow-up questions from user go to 'response_generator'.
 
         Output strictly in JSON:
@@ -80,4 +80,7 @@ def orchestrator(state: AppState) -> str:
         decision = {"next_node": "data_extractor", "reason": "fallback due to parse error"}
 
     print(f"🧭 Orchestrator Decision → {decision['next_node']} ({decision['reason']})")
-    return decision["next_node"]
+    return {
+        **state,
+        "next": decision["next_node"]
+    }
