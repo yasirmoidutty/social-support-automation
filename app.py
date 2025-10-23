@@ -1,12 +1,9 @@
 import streamlit as st
-import os
-import joblib
-import pandas as pd
 import requests
 from utils import frontent_utils
 
-st.set_page_config(page_title="🛠 Social Support Application Automation", layout="wide")
-st.title("🛠 Social Support Application Automation")
+st.set_page_config(page_title="Social Support Application Automation", layout="wide")
+st.title("Social Support Application Automation")
 st.write("Upload applicant documents (PDF/Image) and check eligibility for social support.")
 
 uploaded_files = st.file_uploader("Upload Application form, Passport, Salary slip and Bank Statement", 
