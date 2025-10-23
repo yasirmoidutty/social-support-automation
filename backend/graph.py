@@ -14,10 +14,10 @@ graph.add_node("eligibility_checker", eligibility_checker)
 graph.add_node("response_generator", response_generator)
 graph.add_node("orchestrator", orchestrator)
 
-graph.add_edge("orchestrator", "data_extractor")
-graph.add_edge("orchestrator", "data_validator")
-graph.add_edge("orchestrator", "eligibility_checker")
-graph.add_edge("orchestrator", "response_generator")
+graph.add_conditional_edges(
+    "orchestrator",
+    lambda state: state.get("next")  
+)
 
 graph.add_edge("data_extractor", "orchestrator")
 graph.add_edge("data_validator", "orchestrator")
@@ -34,6 +34,3 @@ evaluater = graph.compile()
 img = Image(evaluater.get_graph (xray=True). draw_mermaid_png())
 pimg = PIL.Image.open(io.BytesIO(img.data))
 pimg.save("workflow_graph.png")
-
-
-
