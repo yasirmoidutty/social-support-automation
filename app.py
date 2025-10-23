@@ -28,7 +28,7 @@ if uploaded_files:
 
             final_status = result.get("final_status", "")
             reason = result.get("reason", "")
-            status = "✅ Eligible" if final_status == "eligibile" else "❌ Not Eligible"
+            status = "✅ Eligible" if final_status == "eligible" else "❌ Not Eligible"
 
             st.subheader("Final Decision")
             st.markdown(f"### {status}")

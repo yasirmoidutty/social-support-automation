@@ -28,11 +28,11 @@ def data_extractor(state: AppState) -> dict:
         "age": 51     
     }
 
-    print(extracted_data)
+    # print(extracted_data)
     return {"extracted_data": extracted_data}
 
 def data_validator(state: AppState) -> dict:
-    print("Validating data...")
+    # print("Validating data...")
     # validation_results = document_validater(state)
     validation_results = {
         "age_validation": "success",
@@ -53,7 +53,7 @@ def eligibility_checker(state: AppState) -> AppState:
         "age": applicant_info.get("age", 0)     
     }])
 
-    print(df)
+    # print(df)
 
     # prediction = eligibility_model.predict(df)[0]
     # eligibility = True if prediction == 0 else False
