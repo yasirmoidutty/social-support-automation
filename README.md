@@ -1,4 +1,4 @@
-# 🧠 Social Support Application Validator  
+# Social Support Application Validator  
 
 A modular AI workflow built with **LangGraph**, **Ollama**, and **Streamlit** for automatically validating social support applications.
 
