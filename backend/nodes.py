@@ -11,21 +11,35 @@ eligibility_model = joblib.load(model_path)
 
 def data_extractor(state: AppState) -> dict:
     application = state.get("applicant_info", {}).get("application_form", "")
-    print("Application Data\n\n--------------", application)
-    if application and application.strip():
-        try:
-            print("Extracting relevant info")
-            extracted_data = parse_applicant_info(extracted_text=application)
-        except:
-            print("data extraction failed")
-            extracted_data = {}
+    # print("Application Data\n\n--------------", application)
+    # if application and application.strip():
+    #     try:
+    #         print("Extracting relevant info")
+    #         extracted_data = parse_applicant_info(extracted_text=application)
+    #     except:
+    #         print("data extraction failed")
+    #         extracted_data = {}
+
+    extracted_data = {
+        "income": 7300,
+        "family_size": 3,
+        "employment_years": 16,
+        "assets": 15000,
+        "age": 51     
+    }
 
     print(extracted_data)
     return {"extracted_data": extracted_data}
 
 def data_validator(state: AppState) -> dict:
     print("Validating data...")
-    validation_results = document_validater(state)
+    # validation_results = document_validater(state)
+    validation_results = {
+        "age_validation": "success",
+        "income_validation": "success",
+        "overall_status": "success" ,
+        "reason": "All the details entered by the applicant is correct"
+    }
     return {"validation_results": validation_results}
 
 def eligibility_checker(state: AppState) -> AppState:
@@ -41,15 +55,20 @@ def eligibility_checker(state: AppState) -> AppState:
 
     print(df)
 
-    prediction = eligibility_model.predict(df)[0]
-    eligibilty = True if prediction == 0 else False
-    return {"eligibility": eligibilty}
+    # prediction = eligibility_model.predict(df)[0]
+    # eligibility = True if prediction == 0 else False
+    eligibility = True
+    return {"eligibility": eligibility}
 
 def response_generator(state: AppState) -> dict:
-    final_response = response_generator_ollama(state)
+    # final_response = response_generator_ollama(state)
+    final_response = {
+    "final_status": "eligible",
+    "reason": "As per the details given by the applicant, he is eligible for the social support"
+    }
     return {"final_response": final_response}
 
-def orchestrator(state: AppState) -> str:
+def orchestrator(state: AppState) -> dict:
     state_json = json.dumps(state, indent=2)
 
     prompt = f"""
@@ -72,12 +91,29 @@ def orchestrator(state: AppState) -> str:
         }}
     """
 
-    response = ollama.chat(model="qwen2.5:7b-instruct", messages=[{"role": "user", "content": prompt}])
+    # response = ollama.chat(model="qwen2.5:7b-instruct", messages=[{"role": "user", "content": prompt}])
     
-    try:
-        decision = json.loads(response["content"])
-    except Exception:
-        decision = {"next_node": "data_extractor", "reason": "fallback due to parse error"}
+    # try:
+    #     decision = json.loads(response["content"])
+    # except Exception:
+    #     decision = {"next_node": "data_extractor", "reason": "fallback due to parse error"}
 
-    print(f"🧭 Orchestrator Decision → {decision['next_node']} ({decision['reason']})")
-    return decision["next_node"]
+    # print(f"🧭 Orchestrator Decision → {decision['next_node']} ({decision['reason']})")
+
+    print(state)
+
+    decision = {}
+    if state["applicant_info"]:
+        decision["next_node"] = "data_extractor"
+    if "extracted_data" in state:
+        decision["next_node"] = "eligibility_checker"
+    if "eligibility" in state and state["eligibility"]:
+        decision["next_node"] = "data_validator"
+    if "validation_results" in state:
+        decision["next_node"] = "response_generator"
+
+    print(decision["next_node"])
+    return {
+        **state,
+        "next": decision["next_node"]
+    }
